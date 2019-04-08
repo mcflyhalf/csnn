@@ -59,7 +59,8 @@ class NeuralNet:
 				self.update_weights(mini_train_batch, learn_rate, batch_strength)
 
 			if test_data:
-				print("Epoch {} : {} / {} >> {} % correct".format(epoch,self.evaluate(test_data),test_num, ));
+				hits = self.evaluate(test_data)
+				print("Epoch {} : {} / {} >> {}% correct".format(epoch,hits,test_num, 100*(hits/test_num)))
 			else:
 				print("Epoch {} complete".format(epoch))	
 
