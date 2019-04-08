@@ -5,6 +5,9 @@
 import numpy as np
 import copy
 import random
+from csnn import get_logger
+
+log = get_logger("csnn")
 
 class NeuralNet:
 	def __init__(self, layer_size):
@@ -13,7 +16,7 @@ class NeuralNet:
 		self.bias = list()
 		self.weight = list()
 		#For each layer (from layer 2 onwards), create a random bias that corresponds to each neuron. Biases are normalised from -1 to 1 
-		for size in layer_size[1:]:
+		for size in self.layer_size[1:]:
 			self.bias.append(np.random.randn(size,1))
 
 		#Above 2 lines can also be expressed as:
@@ -27,7 +30,7 @@ class NeuralNet:
 
 	def feedforward(self, inputs):
 		for b,w in zip(self.bias, self.weight):		#b is a single bias for a neuron n in layer L and w is a list of weights for each edge entering n from layer L-1
-			inputs = np.dot(w,inputs) + b
+			inputs = np.dot(w.transpose(),inputs) + b 	#May be inputs = np.dot(w,inputs) + b 
 			inputs=sigmoid(inputs)
 
 		return inputs		#Despite its deceptive name, inputs now contains outputs. This nomenclature was useful for conciseness of the code
@@ -54,33 +57,72 @@ class NeuralNet:
 			if test_data:
 				print("Epoch {} : {} / {}".format(epochs,self.evaluate(test_data),test_num));
 			else:
-				print("Epoch {} complete".format(j))	
+				print("Epoch {} complete".format(epoch))	
 
 	def update_weights(self,training_batch, batch_strength, learn_rate=3.0):
 		'''Function that expects to get a part (or all of) the training data and use that to update the weights and biases of the NN. The batch strength is the ratio of the length of the training batch to that of the training data e.g. if there are 100 training data and a particular batch has 20 training samples, then batch strength is 20/100 = 0.2. Thus 0<batch_strength<=1'''
 
 		#b for bias, w for weight
+		#Copy the structure of self.bias and self.weight but fill it with all zeros. Could also use:
+		#new_b = copy.deepcopy(self.bias) 
+		#and a similar expression for the weights
 		new_b = [np.zeros(b.shape) for b in self.bias]
 		new_w = [np.zeros(w.shape) for w in self.weight]
+
+		delta_new_b,delta_new_w = self.backprop(training_batch[0][0],training_batch[0][1])	#Test, this line can be removed later
+		log.debug("Shape new_b: {}".format(np.shape(new_b)))
+		log.debug("Shape delta_new_b: {}".format(np.shape(delta_new_b)))
+		log.debug("Shape new_w: {}".format(np.shape(new_w)))
+		log.debug("Shape delta_new_w: {}".format(np.shape(delta_new_w)))
+
+		temp_b = list()
+		temp_w = list()
 
 		for inpt, target in training_batch:
 			delta_new_b,delta_new_w = self.backprop(inpt,target)
 
+
+			#print("new_b shape: {} \nnew_w shape:{}".format(np.shape(new_b),np.shape(new_w)))
+
 			new_b = [nb+dnb for nb, dnb in zip(new_b, delta_new_b)]
+			
+			zip_b = zip(new_b, delta_new_b)
+			for nb, dnb in zip_b:
+				self.nb = nb
+				self.dnb = dnb
+				log.debug("nb: {}\t\tdnb: {}".format(nb.shape, dnb.shape))
+				temp_b.append(nb+dnb)
+
+			self.dnw = delta_new_w
+			zip_w = zip(new_w, delta_new_w)
+			for z1,z2 in zip_w:
+				log.debug("z1(nw): {}\t\tz2(dnw): {}".format(z1.shape, z2.shape))
+
+
+			for nw, dnw in zip_w:
+				self.nw = nw
+				self.dnw = dnw
+				log.debug("nw: {}\t\tdnw: {}".format(nw.shape, dnw.shape))
+				temp_w.append(nw+dnw)
+
+			log.debug("new_b equals temp_b: {}".format(len(new_b)== len(temp_b)))
+
 			new_w = [nw+dnw for nw, dnw in zip(new_w, delta_new_w)]
 
-			self.weights = [w-((learn_rate*batch_strength)*nw) for w, nw in zip(self.weights, new_w)]
 
 
-			self.biases = [b-((learn_rate*batch_strength)*nb) for b, nb in zip(self.biases, n_b)]
+			self.weight = [w-((learn_rate*batch_strength)*nw) for w, nw in zip(self.weight, new_w)]
 
 
-	def backprop(self, input, target):		#Backpropagation rule- Make a single pass forward in the NN, then ...
+			self.bias = [b-((learn_rate*batch_strength)*nb) for b, nb in zip(self.bias, new_b)]
 
-		current_activation = input
-		activation = [input]	#Now contains the input to layer 1, will eventually contain inputs to all layers
 
-		z = list()		#Will store the outputs, z, of the neurons from each layer. z=w*input+b
+	def backprop(self, inpt, target):		#Backpropagation rule- Make a single pass forward in the NN, then propagate the error backwards. We don't use the feedforward function here because we need to keep track of the euron activations
+
+		current_activation = inpt
+		activation = [inpt]	#Now contains the input to layer 1 (which is also the output of layer 1 because of the nature of the input layer), will eventually contain inputs to all layers
+
+		z = list()		#Will store the inputs, z, to the neurons from each layer. z=w*inpt+b. Only layer 2 onwards have a z...
 
 		#Forward pass
 		for b,w in zip(self.bias, self.weight):
@@ -90,27 +132,32 @@ class NeuralNet:
 			current_activation= sigmoid(_z)
 			activation.append(current_activation)
 
+		log.debug("Size z[0]: {} \tSize z[1]: {}\t\tLen(Activation): {}".format(len(z[0]),len(z[1]),len(activation)))
+
 		#Backward pass
 
 		#b for bias, w for weight
 		new_b = copy.deepcopy(self.bias)
 		new_w = copy.deepcopy(self.weight)
 
-		del_b = (activation[-1] - target) * sigmoid_prime(z[-1])	#Rem -(y-y') = y'-y
+		del_b = (activation[-1] - target) * sigmoid_prime(z[-1])	#Rate of change of b for last layer wrt Cost function
 		new_b[-1] = del_b
-		new_w[-1] = np.dot(del_b,activation[-2].transpose)
+		new_w[-1] = np.dot(del_b,activation[-2].transpose())		#Rate of change of w for last layer wrt Cost function
+		log.debug("new_w shape: {}".format(new_w[-1].shape))
+		new_w[-1] = new_w[-1].transpose()
 
 		#TODO: Include logic to make this work for a nn with no hidden layers
 
-		#Need to understand this bit. Dont quite get how the maths translates to this
+		#Need to understand this bit. Dont quite get how the maths translates to this. Calculate the rate of change of w and b wrt cost function for each layer except the last which is done above...
 		for layer in range(2,self.num_layers):
 			_z = z[-layer]
 			sp = sigmoid_prime(_z)
-			del_b = np.dot(self.weights[-layer+1].transpose(), del_b) * sp
+			del_b = np.dot(self.weight[-layer+1], del_b) * sp
 			new_b[-layer] = del_b
-			new_w[-layer] = np.dot(del_b, activation[-layer+1].transpose())
+			new_w[-layer] = np.dot(del_b, activation[-layer-1].transpose())
+			new_w[-layer] = new_w[-layer].transpose()
 
-		return (new_b, new_w)
+		return (new_b, new_w)		#Rates of change of b and w wrt Cost fxn should be sam size and shape as self.bias and self.weight respectively
 
 	def evaluate(self,test_data):
 		"""Return the number of test inputs for which the neural
