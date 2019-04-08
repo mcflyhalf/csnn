@@ -15,20 +15,23 @@ class NeuralNet:
 		self.layer_size = layer_size
 		self.bias = list()
 		self.weight = list()
-		#For each layer (from layer 2 onwards), create a random bias that corresponds to each neuron. Biases are normalised from -1 to 1 
+		#For each layer (from layer 2 onwards), create a random bias that corresponds to each neuron.
 		for size in self.layer_size[1:]:
 			self.bias.append(np.random.randn(size,1))
 
 		#Above 2 lines can also be expressed as:
-		# self.biase = [np.random.randn(y, 1) for y in layer_size[1:]]
+		# self.bias = [np.random.randn(y, 1) for y in layer_size[1:]]
 
+		#For each layer from layer 1 to layer n-1, create a (random) set of weights such that between any 2 layers l and l+1 in the network, there is a mweights matrix. The size of the weights matrix if layer l has x neurons and layer l+1 has y neurons should be l X y. This means that if layer l has 10 neurons and layer l+1 has 3 neurons, the weights matrix between these 2 will be a 10 X 3 matrix.
 		for size1, size2 in zip(layer_size[1:],layer_size[:-1]):
 			self.weight.append(np.random.randn(size2,size1))
 
 		#The whole of the above for loop can be condensed to:
 		#self.weights = [np.random.randn(y, x) for x, y in zip(sizes[:-1], sizes[1:])]
 
+
 	def feedforward(self, inputs):
+		'''A function which accepts an input vector and propagates it forward through the network and returns an output vector'''
 		for b,w in zip(self.bias, self.weight):		#b is a single bias for a neuron n in layer L and w is a list of weights for each edge entering n from layer L-1
 			inputs = np.dot(w.transpose(),inputs) + b 	#May be inputs = np.dot(w,inputs) + b 
 			inputs=sigmoid(inputs)
@@ -36,6 +39,7 @@ class NeuralNet:
 		return inputs		#Despite its deceptive name, inputs now contains outputs. This nomenclature was useful for conciseness of the code
 
 	def train(self, training_data, epochs=30, mini_train_batch_size=-1, learn_rate=3.0, test_data=None):	#Train the network using stochastic gradient descent with what I think are decent default params
+		'''Take the training data, split it into small batches and for each batch use that data to update the weights of the network using the update_weights fxn'''
 		training_data = list(training_data)
 		train_num = len(training_data)
 		if mini_train_batch_size <1:
@@ -55,7 +59,7 @@ class NeuralNet:
 				self.update_weights(mini_train_batch, learn_rate, batch_strength)
 
 			if test_data:
-				print("Epoch {} : {} / {}".format(epochs,self.evaluate(test_data),test_num));
+				print("Epoch {} : {} / {} >> {} % correct".format(epoch,self.evaluate(test_data),test_num, ));
 			else:
 				print("Epoch {} complete".format(epoch))	
 
@@ -69,55 +73,25 @@ class NeuralNet:
 		new_b = [np.zeros(b.shape) for b in self.bias]
 		new_w = [np.zeros(w.shape) for w in self.weight]
 
-		delta_new_b,delta_new_w = self.backprop(training_batch[0][0],training_batch[0][1])	#Test, this line can be removed later
-		log.debug("Shape new_b: {}".format(np.shape(new_b)))
-		log.debug("Shape delta_new_b: {}".format(np.shape(delta_new_b)))
-		log.debug("Shape new_w: {}".format(np.shape(new_w)))
-		log.debug("Shape delta_new_w: {}".format(np.shape(delta_new_w)))
-
-		temp_b = list()
-		temp_w = list()
-
+		
+		'''
+		For each (input, target) pair in the training batch:
+		1. Find the rate of change of all b and all w using backprop. Call this del_b and del_w
+		2. Add del_b to the new_b variable above so that after all training, new_b has the sum of all del_b from the training run. Do the same for new_w
+		3. Update the weights of the nn (self.weights) as weight-(learnrate*batchstrength*new_b). You will need a for loop to do this as self.weights is a list of matrices. Repeat for the biases as well
+		'''
+		
 		for inpt, target in training_batch:
 			delta_new_b,delta_new_w = self.backprop(inpt,target)
 
-
-			#print("new_b shape: {} \nnew_w shape:{}".format(np.shape(new_b),np.shape(new_w)))
-
 			new_b = [nb+dnb for nb, dnb in zip(new_b, delta_new_b)]
-			
-			zip_b = zip(new_b, delta_new_b)
-			for nb, dnb in zip_b:
-				self.nb = nb
-				self.dnb = dnb
-				log.debug("nb: {}\t\tdnb: {}".format(nb.shape, dnb.shape))
-				temp_b.append(nb+dnb)
-
-			self.dnw = delta_new_w
-			zip_w = zip(new_w, delta_new_w)
-			for z1,z2 in zip_w:
-				log.debug("z1(nw): {}\t\tz2(dnw): {}".format(z1.shape, z2.shape))
-
-
-			for nw, dnw in zip_w:
-				self.nw = nw
-				self.dnw = dnw
-				log.debug("nw: {}\t\tdnw: {}".format(nw.shape, dnw.shape))
-				temp_w.append(nw+dnw)
-
-			log.debug("new_b equals temp_b: {}".format(len(new_b)== len(temp_b)))
-
 			new_w = [nw+dnw for nw, dnw in zip(new_w, delta_new_w)]
 
-
-
 			self.weight = [w-((learn_rate*batch_strength)*nw) for w, nw in zip(self.weight, new_w)]
-
-
 			self.bias = [b-((learn_rate*batch_strength)*nb) for b, nb in zip(self.bias, new_b)]
 
 
-	def backprop(self, inpt, target):		#Backpropagation rule- Make a single pass forward in the NN, then propagate the error backwards. We don't use the feedforward function here because we need to keep track of the euron activations
+	def backprop(self, inpt, target):		#Backpropagation rule- Make a single pass forward in the NN, then propagate the error backwards. We don't use the feedforward function here because we need to keep track of the neuron activations
 
 		current_activation = inpt
 		activation = [inpt]	#Now contains the input to layer 1 (which is also the output of layer 1 because of the nature of the input layer), will eventually contain inputs to all layers
@@ -178,16 +152,3 @@ def sigmoid(z):
 
 def sigmoid_prime(z):
 	return sigmoid(z)*(1-sigmoid(z))
-
-
-
-
-
-
-
-
-
-
-
-
-

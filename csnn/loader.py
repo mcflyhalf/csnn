@@ -4,6 +4,8 @@
 
 #The data used is found from http://deeplearning.net/data/mnist/mnist.pkl.gz
 
+# You can save it in the directory you are working on in a unix system by cd'ing to that directory then wget http://deeplearning.net/data/mnist/mnist.pkl.gz
+
 """
 mnist_loader
 ~~~~~~~~~~~~
