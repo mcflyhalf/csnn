@@ -6,6 +6,7 @@ Implement image classifier for MNIST dataset without using any Neural Network li
 
 To start, on your terminal, cd to the place where you want the project to live then:
 ```
+$: sudo apt-get install python3
 $: git clone https://github.com/mcflyhalf/csnn
 $: virtualenv --PYTHON=python3 csnn
 $: cd csnn
